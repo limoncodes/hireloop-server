@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { application } from 'express';
 import cors from 'cors'
 import { MongoClient, ObjectId } from 'mongodb';
 import 'dotenv/config'
@@ -24,6 +24,7 @@ const connectedClient = await connectToMongoDB()
 const database = connectedClient.db("hireloopdb")
 const users = database.collection("user")
 const jobs = database.collection("jobs")
+const applicants = database.collection('applicants')
 
 app.get('/', (req, res) => {
   res.send('hire loop is looping');
@@ -45,6 +46,12 @@ app.post("/jobs", async (req, res) => {
   const result = await jobs.insertOne(job);
   res.send(result)
 
+})
+app.get('/jobs/:id', async (req,res)=>{
+  const id = req.params.id
+  const query = {_id:new ObjectId(id)}
+  const result = await jobs.findOne(query)
+  res.send(result)
 })
 
 app.get('/jobs', async (req, res) => {
@@ -104,6 +111,16 @@ app.delete("/jobs/:id", async (req, res) => {
   const id = req.params.id
   const query = { _id: new ObjectId(id) };
   const result = await jobs.deleteOne(query)
+  res.send(result)
+})
+app.post("/applicants", async(req,res)=>{
+  const  applicantion = req.body;
+  const result = await applicants.insertOne(applicantion) 
+  res.send(result)
+})
+app.get('/applicants', async(req,res)=>{
+  const currsor = applicants.find({})
+  const result = await currsor.toArray()
   res.send(result)
 })
 
