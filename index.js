@@ -128,6 +128,16 @@ app.get('/applicants', async (req, res) => {
   const result = await applicants.find(query).toArray();
   res.send(result);
 })
+app.get('/applicants/count', async (req, res) => {
+  const query = {};
+  if (req.query.email) {
+    query.email = req.query.email;
+  }
+  const result = await applicants.countDocuments(query)
+ 
+  res.send({count: result});
+})
+
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
