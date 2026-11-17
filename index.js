@@ -118,10 +118,15 @@ app.post("/applicants", async(req,res)=>{
   const result = await applicants.insertOne(applicantion) 
   res.send(result)
 })
-app.get('/applicants', async(req,res)=>{
-  const currsor = applicants.find({})
-  const result = await currsor.toArray()
-  res.send(result)
+// all applications — or only one user's with ?email=...
+// (same pattern as the jobs filtering: /applicants?email=seeker@gmai.com)
+app.get('/applicants', async (req, res) => {
+  const query = {};
+  if (req.query.email) {
+    query.email = req.query.email;
+  }
+  const result = await applicants.find(query).toArray();
+  res.send(result);
 })
 
 app.listen(port, () => {
