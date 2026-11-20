@@ -2,6 +2,8 @@ import express, { application } from 'express';
 import cors from 'cors'
 import { MongoClient, ObjectId } from 'mongodb';
 import 'dotenv/config'
+import Stripe from 'stripe'
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -25,6 +27,7 @@ const database = connectedClient.db("hireloopdb")
 const users = database.collection("user")
 const jobs = database.collection("jobs")
 const applicants = database.collection('applicants')
+const payments = database.collection("payments")
 
 app.get('/', (req, res) => {
   res.send('hire loop is looping');
@@ -34,6 +37,83 @@ app.get("/users", async (req, res) => {
   const result = await cursor.toArray()
   res.send(result)
 })
+app.get('/users/:id/premium', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ premium: false, message: 'Invalid user id' })
+    }
+    const query = { _id: new ObjectId(id) };
+    const user = await users.findOne(query, { projection: { premium: 1 } })
+    return res.json({ premium: user?.premium === true })
+  } catch (error) {
+    console.error('get premium error:', error)
+    return res.status(500).json({
+      premium: false,
+      message: error instanceof Error ? error.message : 'Could not check premium status',
+    })
+  }
+})
+// payment 
+app.post('/payment/checkout_verify', async (req, res) => {
+  const { sessionid } = req.body;
+
+  if (!sessionid) {
+    return res.status(400).json({ success: false, message: 'Missing session id' })
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionid)
+    const {
+      status,
+      customer_email,
+      metadata,
+      payment_intent,
+      payment_status,
+    } = session
+
+    if (status !== 'complete' || payment_status !== 'paid') {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed',
+      })
+    }
+
+    // The frontend puts the logged-in user id in the Checkout Session metadata.
+    if (!metadata?.userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing userId in session metadata',
+      })
+    }
+
+    const payment = {
+      sessionid,
+      status,
+      payment_status,
+      customer_email,
+      userId: metadata.userId,
+      payment_intent,
+      payment_date: new Date()
+    }
+    // `payments` is the Mongo collection; `payment` is just the document.
+    const result = await payments.insertOne(payment)
+
+    const query = { _id: new ObjectId(metadata.userId) }
+    const updateDoc = { $set: { premium: true } }
+    const UpdateResult = await users.updateOne(query, updateDoc)
+
+    return res.json({ success: true, result, UpdateResult })
+  } catch (error) {
+    console.error('checkout_verify error:', error)
+    return res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Verification failed',
+    })
+  }
+})
+
+
 // jobs related apis
 app.post("/jobs", async (req, res) => {
   // defaults the user never sends from the form
@@ -47,9 +127,9 @@ app.post("/jobs", async (req, res) => {
   res.send(result)
 
 })
-app.get('/jobs/:id', async (req,res)=>{
+app.get('/jobs/:id', async (req, res) => {
   const id = req.params.id
-  const query = {_id:new ObjectId(id)}
+  const query = { _id: new ObjectId(id) }
   const result = await jobs.findOne(query)
   res.send(result)
 })
@@ -70,7 +150,7 @@ app.get('/jobs', async (req, res) => {
     if (req.query.remote) {
       query.remote = req.query.remote === "true";
     }
-    if(req.query.category){
+    if (req.query.category) {
       query.category = req.query.category
     }
 
@@ -113,9 +193,9 @@ app.delete("/jobs/:id", async (req, res) => {
   const result = await jobs.deleteOne(query)
   res.send(result)
 })
-app.post("/applicants", async(req,res)=>{
-  const  applicantion = req.body;
-  const result = await applicants.insertOne(applicantion) 
+app.post("/applicants", async (req, res) => {
+  const applicantion = req.body;
+  const result = await applicants.insertOne(applicantion)
   res.send(result)
 })
 // all applications — or only one user's with ?email=...
@@ -134,8 +214,8 @@ app.get('/applicants/count', async (req, res) => {
     query.email = req.query.email;
   }
   const result = await applicants.countDocuments(query)
- 
-  res.send({count: result});
+
+  res.send({ count: result });
 })
 
 
