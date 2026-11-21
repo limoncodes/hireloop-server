@@ -140,6 +140,12 @@ app.get('/jobs', async (req, res) => {
   // console.log('query', req.query);
 
   if (req.query) {
+    // A recruiter's Manage Jobs page sends ?recruiterId=<user id> —
+    // only that recruiter's own jobs should come back.
+    if (req.query.recruiterId) {
+      query.recruiterId = String(req.query.recruiterId);
+    }
+
     if (req.query.jobType) {
       query.jobType = {
         $regex: req.query.jobType,
@@ -182,7 +188,9 @@ app.get('/jobs', async (req, res) => {
     }
   }
 
-  const result = await jobs.find(query).toArray();
+  // Newest jobs first — ObjectId begins with a timestamp, so sorting by
+  // _id descending puts the most recently posted jobs at the top.
+  const result = await jobs.find(query).sort({ _id: -1 }).toArray();
 
   res.send(result);
 });
