@@ -213,7 +213,12 @@ app.get('/applicants', async (req, res) => {
   if (req.query.email) {
     query.email = req.query.email;
   }
-  const result = await applicants.find(query).toArray();
+  // Recruiter's job applications page filters by jobId
+  if (req.query.jobId) {
+    query.jobId = String(req.query.jobId);
+  }
+  // Newest applications first
+  const result = await applicants.find(query).sort({ _id: -1 }).toArray();
   res.send(result);
 })
 app.get('/applicants/count', async (req, res) => {
@@ -224,6 +229,44 @@ app.get('/applicants/count', async (req, res) => {
   const result = await applicants.countDocuments(query)
 
   res.send({ count: result });
+})
+
+// Dynamically update any editable field on one application.
+// The recruiter review table sends { status: "Review" } etc.
+app.patch('/applicants/:id', async (req, res) => {
+  try {
+    if (!ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid application id' })
+    }
+
+    // Only whitelisted fields can be changed — _id / jobId stay untouched.
+    const editable = ['status', 'email', 'userId', 'jobTitle', 'companyName']
+    const update = {}
+    for (const key of editable) {
+      if (req.body?.[key] !== undefined) update[key] = req.body[key]
+    }
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' })
+    }
+
+    const result = await applicants.findOneAndUpdate(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { ...update, updatedAt: new Date() } },
+      { returnDocument: 'after' }
+    )
+
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'Application not found' })
+    }
+
+    return res.json({ success: true, result })
+  } catch (error) {
+    console.error('PATCH /applicants/:id error:', error)
+    return res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Update failed',
+    })
+  }
 })
 
 
